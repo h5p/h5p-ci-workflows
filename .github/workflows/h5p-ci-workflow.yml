@@ -6,25 +6,36 @@ on:
       run-translations:
         required: true
         type: boolean
+      lint:
+        required: true
+        type: boolean
       pack:
         required: true
         type: boolean
 
 jobs:
-  reusable-workflow:
+  Validate-translations:
     runs-on: ubuntu-latest
-
+    if: ${{ inputs.run-translations }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      - name: Install h5p cli
+        run: npm install h5p-cli
+      - name: Validate translations
+        run: h5p validate
+  
+  Linter: # Dummy placeholder for linting
+    runs-on: ubuntu-latest
+    if: ${{ inputs.lint }}
 
-    - name: Run translations # Dummy placeholder for updating translations
-      if: ${{ inputs.run-translations }}
-      run: echo "running translations"
-
-    - name: Pack # Dummy placeholder for packing libraries
-      if: ${{ inputs.pack }}
-      run: echo "packing library"
+  Pack-library: # Dummy placeholder for packing libraries
+    runs-on: ubuntu-latest
+    if: ${{ inputs.pack }}
 
     # Comment out if want to test with the reusable workflow failing.
     # - name: Try to fail
