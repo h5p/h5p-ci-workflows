@@ -18,7 +18,16 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20
-      - name: Install h5p cli
-        run: npm install h5p-cli
+      - name: Clone h5p-cli repository
+        run: git clone https://github.com/h5p/h5p-cli.git
+      - name: Install h5p-cli from specific branch
+        run: |
+          cd h5p-cli
+          npm install
+          cd ..
+          npm install -g ./h5p-cli
       - name: Validate translations
-        run: h5p validate
+        run: |
+          libDir=${PWD##*/}
+          cd ..
+          h5p utils validate "${libDir}"
