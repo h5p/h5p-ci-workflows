@@ -6,12 +6,6 @@ on:
       run-translations:
         required: true
         type: boolean
-      lint:
-        required: true
-        type: boolean
-      pack:
-        required: true
-        type: boolean
 
 jobs:
   Validate-translations:
@@ -23,20 +17,8 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v3
         with:
-          node-version: 16
+          node-version: 20
       - name: Install h5p cli
         run: npm install h5p-cli
       - name: Validate translations
         run: h5p validate
-  
-  Linter: # Dummy placeholder for linting
-    runs-on: ubuntu-latest
-    if: ${{ inputs.lint }}
-
-  Pack-library: # Dummy placeholder for packing libraries
-    runs-on: ubuntu-latest
-    if: ${{ inputs.pack }}
-
-    # Comment out if want to test with the reusable workflow failing.
-    # - name: Try to fail
-    #   run: exit 1
