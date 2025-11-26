@@ -26,9 +26,9 @@ jobs:
       - name: Install h5p-cli from specific branch
         run: |
           cd h5p-cli
-          npm install
+          npm ci --ignore-scripts
           cd ..
-          npm install -g ./h5p-cli
+          npm install -g ./h5p-cli --ignore-scripts
 
       - name: Validate translations
         run: |
