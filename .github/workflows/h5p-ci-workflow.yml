@@ -28,7 +28,7 @@ jobs:
           cd h5p-cli
           npm ci --ignore-scripts
           cd ..
-          npm install -g ./h5p-cli
+          npm install -g ./h5p-cli --ignore-scripts
 
       - name: Validate translations
         run: |
