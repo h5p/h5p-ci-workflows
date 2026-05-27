@@ -13,12 +13,12 @@ jobs:
     if: ${{ inputs.run-translations }}
     steps:
       - name: Checkout main repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Setup node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Clone h5p-cli repository
         run: git clone https://github.com/h5p/h5p-cli.git
