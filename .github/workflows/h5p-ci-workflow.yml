@@ -6,6 +6,20 @@ on:
       run-translations:
         required: true
         type: boolean
+      run-e2e:
+        description: "Run the content type E2E suite against the PR branch"
+        required: false
+        default: false
+        type: boolean
+      e2e-ref:
+        description: "Ref of h5pcom-e2e-tests to run the suite from"
+        required: false
+        default: master
+        type: string
+    secrets:
+      E2E_REPO_TOKEN:
+        description: "Token with read access to the private h5pcom-e2e-tests repo (only needed when run-e2e is true)"
+        required: false
 
 jobs:
   validate-translations:
@@ -35,3 +49,75 @@ jobs:
           libDir=${PWD##*/}
           cd ..
           h5p utils validate "${libDir}"
+
+  content-type-e2e:
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-e2e }}
+    timeout-minutes: 30
+    steps:
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # Some content type dependencies build with webpack via "npm run build" and
+      # assume it is available on PATH; provide it globally so "h5p setup" succeeds.
+      - name: Provide global build tooling
+        run: npm install -g webpack webpack-cli
+
+      - name: Install h5p-cli
+        run: |
+          git clone https://github.com/h5p/h5p-cli.git
+          cd h5p-cli
+          npm ci --ignore-scripts
+          cd ..
+          npm install -g ./h5p-cli --ignore-scripts
+
+      - name: Setup content type from PR branch
+        # h5p setup args are positional: <library> <version> <download> <branch>.
+        # The repo name is the library; empty version/download keep defaults; the
+        # 4th arg pins the content type under test to this PR's branch.
+        run: |
+          mkdir h5p-workdir
+          cd h5p-workdir
+          h5p core
+          h5p setup "${{ github.event.repository.name }}" '' '' "${{ github.head_ref }}"
+
+      - name: Checkout e2e tests
+        uses: actions/checkout@v6
+        with:
+          repository: h5p/h5pcom-e2e-tests
+          ref: ${{ inputs.e2e-ref }}
+          token: ${{ secrets.E2E_REPO_TOKEN }}
+          path: e2e
+
+      - name: Install e2e dependencies
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run content type E2E tests
+        working-directory: e2e
+        env:
+          CI: "true"
+        run: |
+          # Serve the locally set up (PR branch) content type in the background.
+          cd ../h5p-workdir
+          h5p server > /tmp/h5p-server.log 2>&1 &
+          cd ../e2e
+          # Wait until the CLI dev server is responding before running tests.
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/dashboard > /dev/null && break
+            echo "waiting for h5p server... ($i)"
+            sleep 2
+          done
+          npm run test:type -- "${{ github.event.repository.name }}" --project=chromium_cli
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.event.repository.name }}
+          path: e2e/playwright-report
+          if-no-files-found: ignore
