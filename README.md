@@ -81,24 +81,8 @@ So the same single caller job shown under [Workflow Caller](#workflow-caller) is
 
 The `chromium_cli` Playwright project sets the `isCLI` option, which the suite's centralized `resolveHelper` fixture uses to upload the local `.h5p` fixture into the running CLI server (instead of targeting a hosted staging URL).
 
-### Local reproduction
-You can reproduce the CI run locally to debug a failing check. In a scratch directory:
-
-```bash
-# 1. Set up the content type from the PR branch
-mkdir h5p-workdir && cd h5p-workdir
-h5p core
-h5p setup h5p-true-false '' '' <pr-branch>
-h5p server &   # serves http://localhost:8080
-
-# 2. In the h5pcom-e2e-tests checkout, run the suite in CLI mode
-cd /path/to/h5pcom-e2e-tests
-npm ci
-npx playwright install chromium
-npm run test:type -- h5p-true-false --project=chromium_cli
-```
-
-The `--project=chromium_cli` flag is what switches the suite from staging URLs to the locally served PR branch.
+### Reproducing locally
+To debug a failing check, run the same suite locally from a `h5pcom-e2e-tests` checkout with `npm run test:cli -- <library>` (see that repo's README for setup, `--branch`, and CLI-mode fixture/keyboard notes).
 
 ### Pass / Fail
 Same semantics as the translation check: the E2E job appears as its own check on the PR. On failure, open the check's **Details** and download the `playwright-report-<library>` artifact for the full trace, screenshots, and per-test diagnostics.
@@ -109,16 +93,4 @@ When a content type is served by `h5p-cli`, the view page wraps the content ifra
 This means **keyboard-driven a11y specs that rely on the page's global tab order can fail under `chromium_cli`** even though the content type is fine — the initial `Tab` lands on the CLI's chrome, not the content. Symptoms are `toBeFocused()` reporting `inactive` and `aria-checked` staying `false` after a keypress. Mouse/`.click()`-based specs are unaffected because they target elements directly.
 
 This is deterministic (not flaky) and host-dependent, so it reproduces identically in CI. To make a keyboard spec host-agnostic, **establish focus inside the iframe before driving the keyboard** (e.g. focus the first content control: `await pom.trueButton.focus()`), rather than assuming `Tab` from the page enters the content. Page-level "tab order" assertions that test the host's traversal are not a pure property of the content type and may be scoped out of `chromium_cli`. Hardening these specs is a separate test-authoring task and is not required for the pipeline itself.
-
-### Fast local reproduction
-`h5pcom-e2e-tests` ships a one-command runner that mirrors this workflow locally (set up the content type with `h5p-cli`, serve it, run the `chromium_cli` suite, tear the server down):
-
-```bash
-# from a checkout of h5pcom-e2e-tests
-npm run test:cli -- h5p-true-false
-# test a specific content-type branch (requires the h5p-cli branch flag):
-npm run test:cli -- h5p-true-false --branch=my-feature-branch
-```
-
-See that repo's `scripts/run-cli-e2e.mjs` for details.
 
