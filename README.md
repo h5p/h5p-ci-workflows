@@ -57,7 +57,7 @@ and some translation files may be corrupted (legacy) the Pull Request may still 
 For more information as to why the check failed, the user may inspect the Details of the check being run.
 
 ## content-type-e2e
-The `content-type-e2e` job (enabled with `run-e2e: true`) runs the Playwright E2E suite for a single content type against the **exact PR branch** of that content type — no deploy or test environment required. It does this by setting up the content type from the PR branch with the `h5p-cli`, serving it locally (`http://localhost:8080`) inside the GitHub Actions runner, and pointing the `chromium_cli` Playwright project at that local server.
+The `content-type-e2e` job (enabled with `run-e2e: true`) runs the Playwright E2E suite for a single content type against the **exact PR branch** of that content type — no deploy or test environment required. The job installs tooling and checks out `h5pcom-e2e-tests`, then runs the same entrypoint used locally: `npm run test:cli`. That script sets up the content type from the PR branch with `h5p-cli`; Playwright serves it on `http://localhost:8080` and runs the `chromium_cli` project.
 
 ### When it runs
 Like `validate-translations`, it is triggered by the caller on `pull_request` to `master` with `types: [opened, synchronize]`, i.e. on PR open and on every new commit pushed to an open PR. This is the earliest possible point — regressions are caught before anything is merged or deployed.
@@ -70,19 +70,24 @@ There is nothing to configure per content type beyond the flag — the job deriv
 
 So the same single caller job shown under [Workflow Caller](#workflow-caller) is all that's needed: set `run-e2e: true` and forward `E2E_REPO_TOKEN`. Optional input `e2e-ref` (default `master`) selects which ref of `h5pcom-e2e-tests` to run the suite from.
 
-> Requires the `h5p setup <library> <version> <download> <branch>` branch argument in `h5p-cli`. Without it the CLI ignores the branch and sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
+> Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
 ### How it works
 1. Installs the `h5p-cli` and global build tooling (`webpack`/`webpack-cli`, needed because some content type dependencies build via `npm run build`).
-2. Runs `h5p core`, then `h5p setup <repo-name> '' '' <head-ref>` — the trailing branch argument makes the CLI clone the content type under test from the PR branch (its dependencies stay on master/tag).
-3. Checks out `h5pcom-e2e-tests`, installs deps and the Chromium browser.
-4. Starts `h5p server` in the background, waits until `http://localhost:8080/dashboard` responds, then runs the suite with `npm run test:type -- <repo-name> --project=chromium_cli`.
-5. Uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`).
+2. Checks out `h5pcom-e2e-tests`, installs deps and the Chromium browser.
+3. Runs `npm run test:cli -- <repo-name> --branch=<head-ref>` — same command as local. That sets up the content type at the PR branch, starts the CLI server via Playwright `webServer`, and runs `chromium_cli`.
+4. Uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`, retained 7 days).
 
 The `chromium_cli` Playwright project sets the `isCLI` option, which the suite's centralized `resolveHelper` fixture uses to upload the local `.h5p` fixture into the running CLI server (instead of targeting a hosted staging URL).
 
 ### Reproducing locally
-To debug a failing check, run the same suite locally from a `h5pcom-e2e-tests` checkout with `npm run test:cli -- <library>` (see that repo's README for setup, `--branch`, and CLI-mode fixture/keyboard notes).
+Same command as CI, from a `h5pcom-e2e-tests` checkout:
+
+```sh
+npm run test:cli -- <library> --branch=<pr-branch>
+```
+
+See that repo's README for setup, `--fresh`, and CLI-mode fixture/keyboard notes.
 
 ### Pass / Fail
 Same semantics as the translation check: the E2E job appears as its own check on the PR. On failure, open the check's **Details** and download the `playwright-report-<library>` artifact for the full trace, screenshots, and per-test diagnostics.
