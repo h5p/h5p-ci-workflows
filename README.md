@@ -46,49 +46,6 @@ and some translation files may be corrupted (legacy) the Pull Request may still 
 
 For more information as to why the check failed, the user may inspect the Details of the check being run.
 
-## content-type-e2e
-The `content-type-e2e` job (enabled with `run-e2e: true`) runs the Playwright E2E suite for a single content type against the **exact PR branch** of that content type — no deploy or test environment required. The job installs tooling and checks out `h5pcom-e2e-tests`, then runs the same entrypoint used locally: `npm run test:cli`. That script sets up the content type from the PR branch with `h5p-cli`; Playwright serves it on `http://localhost:8080` and runs the `chromium_cli` project.
-
-### When it runs
-Like `validate-translations`, it is triggered by the caller on `pull_request` to `master` with `types: [opened, synchronize]`, i.e. on PR open and on every new commit pushed to an open PR. This is the earliest possible point — regressions are caught before anything is merged or deployed.
-
-### Enabling it
-There is nothing to configure per content type beyond the flag — the job derives everything it needs from the PR context:
-
-- **library** = `${{ github.event.repository.name }}` (the caller repo name, e.g. `h5p-true-false`, which must match the folder under `libraries/` in `h5pcom-e2e-tests`).
-- **branch** = `${{ github.head_ref }}` (the PR's head branch, so the suite always tests the proposed change).
-
-So the same single caller job shown under [Workflow Caller](#workflow-caller) is all that's needed: set `run-e2e: true` and forward `E2E_REPO_TOKEN`. Optional input `e2e-ref` (default `master`) selects which ref of `h5pcom-e2e-tests` to run the suite from.
-
-> Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
-
-### How it works
-1. Installs the `h5p-cli` and global build tooling (`webpack`/`webpack-cli`, needed because some content type dependencies build via `npm run build`).
-2. Checks out `h5pcom-e2e-tests`, installs deps and the Chromium browser.
-3. Runs `npm run test:cli -- <repo-name> --branch=<head-ref>` — same command as local. That sets up the content type at the PR branch, starts the CLI server via Playwright `webServer`, and runs `chromium_cli`.
-4. Uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`, retained 7 days).
-
-The `chromium_cli` Playwright project sets the `isCLI` option, which the suite's centralized `resolveHelper` fixture uses to upload the local `.h5p` fixture into the running CLI server (instead of targeting a hosted staging URL).
-
-### Reproducing locally
-Same command as CI, from a `h5pcom-e2e-tests` checkout:
-
-```sh
-npm run test:cli -- <library> --branch=<pr-branch>
-```
-
-See that repo's README for setup, `--fresh`, and CLI-mode fixture/keyboard notes.
-
-### Pass / Fail
-Same semantics as the translation check: the E2E job appears as its own check on the PR. On failure, open the check's **Details** and download the `playwright-report-<library>` artifact for the full trace, screenshots, and per-test diagnostics.
-
-### Known caveat: CLI host chrome vs. keyboard / a11y tests
-When a content type is served by `h5p-cli`, the view page wraps the content iframe in its own focusable UI (dashboard nav, Edit/Delete/Split-View links, theme switcher, session controls). On `staging.h5p.com` the content iframe is effectively the whole page, so a "first `Tab`" lands directly on the first control inside the content.
-
-This means **keyboard-driven a11y specs that rely on the page's global tab order can fail under `chromium_cli`** even though the content type is fine — the initial `Tab` lands on the CLI's chrome, not the content. Symptoms are `toBeFocused()` reporting `inactive` and `aria-checked` staying `false` after a keypress. Mouse/`.click()`-based specs are unaffected because they target elements directly.
-
-This is deterministic (not flaky) and host-dependent, so it reproduces identically in CI. To make a keyboard spec host-agnostic, **establish focus inside the iframe before driving the keyboard** (e.g. focus the first content control: `await pom.trueButton.focus()`), rather than assuming `Tab` from the page enters the content. Page-level "tab order" assertions that test the host's traversal are not a pure property of the content type and may be scoped out of `chromium_cli`. Hardening these specs is a separate test-authoring task and is not required for the pipeline itself.
-
 ## Pack CT snapshot (weekly)
 
 Standalone workflow [`.github/workflows/pack-ct-snapshot.yml`](.github/workflows/pack-ct-snapshot.yml) (not the reusable PR CI workflow). Checks out `h5pcom-tools`, runs `h5pcom-pack-latest-libraries-ci.mjs`, uploads dated + `latest` `.h5p` (+ manifests) to `s3://$CT_SNAPSHOT_BUCKET/ct-snapshots/prod/`.
