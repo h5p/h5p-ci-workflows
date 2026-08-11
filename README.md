@@ -30,12 +30,7 @@ jobs:
 - The `types: [opened, syncronize]` specify that the reusable workflow should be triggered on Pull Requests to master and updates open Pull Request to master.
 - The `uses` field of the `ci` job targets the reusable workflow master branch.
 - The `with` field toggles which checks run: `run-translations` and/or `run-e2e`. Each maps to a job in the reusable workflow that only runs when its flag is true, so a single caller job drives both checks.
-- `secrets: inherit` forwards `E2E_REPO_TOKEN` (needed only when `run-e2e: true`). If you prefer not to forward all secrets, pass it explicitly instead:
-
-```
-    secrets:
-      E2E_REPO_TOKEN: ${{ secrets.E2E_REPO_TOKEN }}
-```
+- `secrets: inherit` forwards the org secrets used for E2E (`E2E_ID` and `E2E_PRIVATE_KEY` — a GitHub App with read access to `h5pcom-e2e-tests`). Only needed when `run-e2e: true`.
 
 ## validate-translations
 The `validate-translations` job is run depending on the input from the caller. If set to true, the job will pull and install the latest version of the `h5p-cli`.
@@ -68,13 +63,13 @@ There is nothing to configure per content type beyond the flag — the job deriv
 - **library** = `${{ github.event.repository.name }}` (the caller repo name, e.g. `h5p-true-false`, which must match the folder under `libraries/` in `h5pcom-e2e-tests`).
 - **branch** = `${{ github.head_ref }}` (the PR's head branch, so the suite always tests the proposed change).
 
-So the same single caller job shown under [Workflow Caller](#workflow-caller) is all that's needed: set `run-e2e: true` and forward `E2E_REPO_TOKEN`. Optional input `e2e-ref` (default `master`) selects which ref of `h5pcom-e2e-tests` to run the suite from.
+So the same single caller job shown under [Workflow Caller](#workflow-caller) is all that's needed: set `run-e2e: true` and `secrets: inherit`. Optional input `e2e-ref` (default `main`) selects which ref of `h5pcom-e2e-tests` to run the suite from.
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
 ### How it works
 1. Installs the `h5p-cli` and global build tooling (`webpack`/`webpack-cli`, needed because some content type dependencies build via `npm run build`).
-2. Checks out `h5pcom-e2e-tests`, installs deps and the Chromium browser.
+2. Uses the GitHub App (`E2E_ID` / `E2E_PRIVATE_KEY`) to check out private `h5pcom-e2e-tests`, then installs deps and Chromium.
 3. Runs `npm run test:cli -- <repo-name> --branch=<head-ref>` — same command as local. That sets up the content type at the PR branch, starts the CLI server via Playwright `webServer`, and runs `chromium_cli`.
 4. Uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`, retained 7 days).
 

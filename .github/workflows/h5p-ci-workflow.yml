@@ -17,8 +17,11 @@ on:
         default: main
         type: string
     secrets:
-      E2E_REPO_TOKEN:
-        description: "Token with read access to the private h5pcom-e2e-tests repo (only needed when run-e2e is true)"
+      E2E_ID:
+        description: "GitHub App ID used to check out private h5pcom-e2e-tests (only when run-e2e is true)"
+        required: false
+      E2E_PRIVATE_KEY:
+        description: "GitHub App private key for that checkout (only when run-e2e is true)"
         required: false
 
 jobs:
@@ -73,12 +76,21 @@ jobs:
           cd ..
           npm install -g ./h5p-cli --ignore-scripts
 
+      - name: Token for private e2e repo
+        id: e2e-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.E2E_ID }}
+          private-key: ${{ secrets.E2E_PRIVATE_KEY }}
+          owner: h5p
+          repositories: h5pcom-e2e-tests
+
       - name: Checkout e2e tests
         uses: actions/checkout@v6
         with:
           repository: h5p/h5pcom-e2e-tests
           ref: ${{ inputs.e2e-ref }}
-          token: ${{ secrets.E2E_REPO_TOKEN }}
+          token: ${{ steps.e2e-token.outputs.token }}
           path: e2e
 
       - name: Install e2e dependencies
