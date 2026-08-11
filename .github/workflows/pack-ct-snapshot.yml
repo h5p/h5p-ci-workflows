@@ -1,0 +1,57 @@
+name: Pack CT snapshot from prod
+
+# Weekly pack of latest prod libraries → snapshot bucket.
+# Needs: secrets.TOOLS_REPO_TOKEN, IAM on Github-Actions
+#   (read prod libraries/ in us-west-1, write snapshot bucket in eu-north-1).
+# Optional: vars.CT_SNAPSHOT_BUCKET (default h5pcom-content-type-snapshots).
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  pack-and-upload:
+    runs-on: ubuntu-latest
+    env:
+      SNAPSHOT_BUCKET: ${{ vars.CT_SNAPSHOT_BUCKET || 'h5pcom-content-type-snapshots' }}
+      SNAPSHOT_REGION: eu-north-1
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: h5p/h5pcom-tools
+          token: ${{ secrets.TOOLS_REPO_TOKEN }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::694349725181:role/Github-Actions
+          aws-region: us-west-1
+
+      - name: Pack and upload
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          OUT="h5ps-from-prod-${DATE}.h5p"
+          DEST="s3://${SNAPSHOT_BUCKET}/ct-snapshots/prod"
+
+          node h5pcom-pack-latest-libraries-ci.mjs "$OUT"
+
+          aws s3 cp "$OUT" "$DEST/$OUT" --region "$SNAPSHOT_REGION"
+          aws s3 cp "$OUT.manifest.json" "$DEST/$OUT.manifest.json" --region "$SNAPSHOT_REGION"
+          aws s3 cp "$OUT" "$DEST/latest.h5p" --region "$SNAPSHOT_REGION"
+          aws s3 cp "$OUT.manifest.json" "$DEST/latest.h5p.manifest.json" --region "$SNAPSHOT_REGION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ct-snapshot
+          path: h5ps-from-prod-*.h5p*
+          retention-days: 14

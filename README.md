@@ -46,3 +46,20 @@ and some translation files may be corrupted (legacy) the Pull Request may still 
 
 For more information as to why the check failed, the user may inspect the Details of the check being run.
 
+## Pack CT snapshot (weekly)
+
+Standalone workflow [`.github/workflows/pack-ct-snapshot.yml`](.github/workflows/pack-ct-snapshot.yml) (not the reusable PR CI workflow). Checks out `h5pcom-tools`, runs `h5pcom-pack-latest-libraries-ci.mjs`, uploads dated + `latest` `.h5p` (+ manifests) to `s3://h5pcom-content-type-snapshots/ct-snapshots/prod/` (`eu-north-1`).
+
+Triggers: Mondays 06:00 UTC, plus `workflow_dispatch`.
+
+**Before first run:**
+1. Merge the CI pack script on `h5pcom-tools` default branch
+2. Grant `Github-Actions` IAM: read `h5pcom-production-us-west-1/libraries/*`, write `h5pcom-content-type-snapshots/ct-snapshots/prod/*`
+3. Repo secret `TOOLS_REPO_TOKEN` (read `h5p/h5pcom-tools`)
+4. Optional repo variable `CT_SNAPSHOT_BUCKET` (defaults to `h5pcom-content-type-snapshots`)
+
+```sh
+aws s3 cp s3://h5pcom-content-type-snapshots/ct-snapshots/prod/latest.h5p ./latest.h5p --region eu-north-1
+php artisan libraries:install ./latest.h5p
+```
+
