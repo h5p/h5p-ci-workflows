@@ -84,7 +84,7 @@ jobs:
       - name: Install e2e dependencies
         working-directory: e2e
         run: |
-          npm ci
+          npm ci --ignore-scripts
           npx playwright install --with-deps chromium
 
       - name: Run content type E2E tests
