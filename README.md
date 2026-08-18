@@ -11,12 +11,28 @@ The triggering logic is implemented as a small GitHub Actions Workflow in the re
 ```
 name: CI
 
+concurrency:
+  group: ct-e2e-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   workflow_dispatch:
+    inputs:
+      e2e-suite:
+        description: gate = PR gate (excludes @a11y); full = include @a11y
+        type: choice
+        options:
+          - gate
+          - full
+        default: full
   pull_request:
     branches:
       - master
-    types: [opened, synchronize]  # Triggers on PR open and commits to PR
+    types: [opened, synchronize]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE*'
+      - '.gitignore'
 
 jobs:
   ci:
@@ -24,17 +40,26 @@ jobs:
     with:
       run-translations: true
       run-e2e: true
+      e2e-suite: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e-suite || 'gate' }}
     secrets: inherit
 ```
 
-- The `types: [opened, syncronize]` specify that the reusable workflow should be triggered on Pull Requests to master and updates open Pull Request to master.
+### Caller adoption checklist (`run-e2e: true`)
+
+Copy these on the caller workflow, not only the `run-e2e` flag:
+
+- `concurrency` with `group: ct-e2e-${{ github.repository }}-${{ github.ref }}` and `cancel-in-progress: true` (latest push wins; other CT repos are unaffected)
+- `paths-ignore` for docs-only PRs (`**.md`, `LICENSE*`, `.gitignore`) so CSS/JS/JSON changes still run E2E
+- `secrets: inherit` for the GitHub App that can read `h5pcom-e2e-tests` (`E2E_ID`, `E2E_PRIVATE_KEY`)
+- Optional: `workflow_dispatch` input `e2e-suite` (`gate` | `full`) and pass it through as shown above
+
+- The `types: [opened, synchronize]` specify that the reusable workflow should be triggered on Pull Requests to master and updates open Pull Request to master.
 - The `uses` field of the `ci` job targets the reusable workflow master branch.
 - The `with` field toggles which checks run: `run-translations` and/or `run-e2e`. Each maps to a job in the reusable workflow that only runs when its flag is true, so a single caller job drives both checks.
 - `secrets: inherit` forwards the org secrets used for E2E (`E2E_ID` and `E2E_PRIVATE_KEY` — a GitHub App with read access to `h5pcom-e2e-tests`). Only needed when `run-e2e: true`.
 
 ## validate-translations
-The `validate-translations` job is run depending on the input from the caller. If set to true, the job will pull and install the latest version of the `h5p-cli`.
-The `h5p utils validate` command is run on the caller repo from the root level. 
+The `validate-translations` job is run depending on the input from the caller. If set to true, the job installs a **pinned** `h5p-cli` ref (`h5p-cli-ref` input) and runs `h5p utils validate` on the caller repo from the root level.
 
 ## Checks
 Upon opening new PRs or updating an existing PR to master, GitHub will first check for the ability to automatically merge, before proceeding with validating the translation files.
@@ -55,31 +80,42 @@ For more information as to why the check failed, the user may inspect the Detail
 The `content-type-e2e` job (enabled with `run-e2e: true`) runs the Playwright E2E suite for a single content type against the **exact PR branch** of that content type — no deploy or test environment required. The job installs tooling and checks out `h5pcom-e2e-tests`, then runs the same entrypoint used locally: `npm run test:cli`. That script sets up the content type from the PR branch with `h5p-cli`; Playwright serves it on `http://localhost:8080` and runs the `chromium_cli` project.
 
 ### When it runs
-Like `validate-translations`, it is triggered by the caller on `pull_request` to `master` with `types: [opened, synchronize]`, i.e. on PR open and on every new commit pushed to an open PR. This is the earliest possible point — regressions are caught before anything is merged or deployed.
+Like `validate-translations`, it is triggered by the caller on `pull_request` to `master` with `types: [opened, synchronize]`, i.e. on PR open and on every new commit pushed to an open PR. This is the earliest possible point — regressions are caught before anything is merged or deployed. Docs-only PRs should be skipped via caller `paths-ignore`.
 
 ### Enabling it
-There is nothing to configure per content type beyond the flag — the job derives everything it needs from the PR context:
+There is nothing to configure per content type beyond the flag and the [caller adoption checklist](#caller-adoption-checklist-run-e2e-true) — the job derives everything it needs from the PR context:
 
 - **library** = `${{ github.event.repository.name }}` (the caller repo name, e.g. `h5p-true-false`, which must match the folder under `libraries/` in `h5pcom-e2e-tests`).
-- **branch** = `${{ github.head_ref }}` (the PR's head branch, so the suite always tests the proposed change).
+- **branch** = `${{ github.head_ref || github.ref_name }}` (PR head branch, or the branch for `workflow_dispatch`).
 
-So the same single caller job shown under [Workflow Caller](#workflow-caller) is all that's needed: set `run-e2e: true` and `secrets: inherit`. Optional input `e2e-ref` (default `main`) selects which ref of `h5pcom-e2e-tests` to run the suite from.
+Optional inputs:
+
+- `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
+- `e2e-suite` (default `gate`) — `gate` excludes `@a11y` on the PR gate; `full` includes them (use from manual dispatch)
+- `h5p-cli-ref` — pinned commit SHA or tag of `h5p/h5p-cli` (default is a fixed SHA; bump deliberately when you need a newer CLI)
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
 ### How it works
-1. Installs the `h5p-cli` and global build tooling (`webpack`/`webpack-cli`, needed because some content type dependencies build via `npm run build`).
-2. Uses the GitHub App (`E2E_ID` / `E2E_PRIVATE_KEY`) to check out private `h5pcom-e2e-tests`, then installs deps and Chromium.
-3. Runs `npm run test:cli -- <repo-name> --branch=<head-ref>` — same command as local. That sets up the content type at the PR branch, starts the CLI server via Playwright `webServer`, and runs `chromium_cli`.
-4. Uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`, retained 7 days).
+1. Installs pinned `h5p-cli` (shallow checkout) and global build tooling (`webpack`/`webpack-cli`).
+2. Uses the GitHub App (`E2E_ID` / `E2E_PRIVATE_KEY`) to check out private `h5pcom-e2e-tests`, then `npm ci` (npm cache) and Chromium (Playwright browser cache keyed by `@playwright/test` version).
+3. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local. That sets up the content type at the PR branch, starts the CLI server via Playwright `webServer`, and runs `chromium_cli`.
+4. On **failure only**, uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`, retained 7 days).
+
+The content type and its H5P dependencies are always set up fresh via `h5p setup` (not restored from cache).
 
 The `chromium_cli` Playwright project sets the `isCLI` option, which the suite's centralized `resolveHelper` fixture uses to upload the local `.h5p` fixture into the running CLI server (instead of targeting a hosted staging URL).
+
+### H5PT-227: temporary `@a11y` exclusion on the PR gate
+`e2e-suite: gate` (normal PRs) passes `--grep-invert "@a11y"` because keyboard a11y specs still assume staging’s tab order and fail under `h5p-cli` host chrome. This is temporary, not a statement that a11y is optional. Run `workflow_dispatch` with `e2e-suite: full` to include `@a11y` until those specs are host-agnostic.
 
 ### Reproducing locally
 Same command as CI, from a `h5pcom-e2e-tests` checkout:
 
 ```sh
 npm run test:cli -- <library> --branch=<pr-branch>
+# Match the PR gate (exclude @a11y):
+npm run test:cli -- <library> --branch=<pr-branch> -- --grep-invert "@a11y"
 ```
 
 See that repo's README for setup, `--fresh`, and CLI-mode fixture/keyboard notes.
@@ -93,4 +129,3 @@ When a content type is served by `h5p-cli`, the view page wraps the content ifra
 This means **keyboard-driven a11y specs that rely on the page's global tab order can fail under `chromium_cli`** even though the content type is fine — the initial `Tab` lands on the CLI's chrome, not the content. Symptoms are `toBeFocused()` reporting `inactive` and `aria-checked` staying `false` after a keypress. Mouse/`.click()`-based specs are unaffected because they target elements directly.
 
 This is deterministic (not flaky) and host-dependent, so it reproduces identically in CI. To make a keyboard spec host-agnostic, **establish focus inside the iframe before driving the keyboard** (e.g. focus the first content control: `await pom.trueButton.focus()`), rather than assuming `Tab` from the page enters the content. Page-level "tab order" assertions that test the host's traversal are not a pure property of the content type and may be scoped out of `chromium_cli`. Hardening these specs is a separate test-authoring task and is not required for the pipeline itself.
-

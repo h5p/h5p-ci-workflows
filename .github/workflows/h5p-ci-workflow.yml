@@ -16,6 +16,16 @@ on:
         required: false
         default: main
         type: string
+      e2e-suite:
+        description: "gate = PR gate (excludes @a11y); full = include @a11y"
+        required: false
+        default: gate
+        type: string
+      h5p-cli-ref:
+        description: "Pinned commit tag of h5p/h5p-cli"
+        required: false
+        default: b33e87fd7d8a72eb641e008d8e9312042f947b02
+        type: string
     secrets:
       E2E_ID:
         description: "GitHub App ID used to check out private h5pcom-e2e-tests (only when run-e2e is true)"
@@ -37,10 +47,15 @@ jobs:
         with:
           node-version: 24
 
-      - name: Clone h5p-cli repository
-        run: git clone https://github.com/h5p/h5p-cli.git
+      - name: Checkout h5p-cli
+        uses: actions/checkout@v6
+        with:
+          repository: h5p/h5p-cli
+          ref: ${{ inputs.h5p-cli-ref }}
+          path: h5p-cli
+          fetch-depth: 1
 
-      - name: Install h5p-cli from specific branch
+      - name: Install h5p-cli
         run: |
           cd h5p-cli
           npm ci --ignore-scripts
@@ -58,19 +73,21 @@ jobs:
     if: ${{ inputs.run-e2e }}
     timeout-minutes: 30
     steps:
-      - name: Setup node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
       # Some content type dependencies build with webpack via "npm run build" and
       # assume it is available on PATH; provide it globally so "h5p setup" succeeds.
       - name: Provide global build tooling
         run: npm install -g webpack webpack-cli
 
+      - name: Checkout h5p-cli
+        uses: actions/checkout@v6
+        with:
+          repository: h5p/h5p-cli
+          ref: ${{ inputs.h5p-cli-ref }}
+          path: h5p-cli
+          fetch-depth: 1
+
       - name: Install h5p-cli
         run: |
-          git clone https://github.com/h5p/h5p-cli.git
           cd h5p-cli
           npm ci --ignore-scripts
           cd ..
@@ -92,22 +109,57 @@ jobs:
           ref: ${{ inputs.e2e-ref }}
           token: ${{ steps.e2e-token.outputs.token }}
           path: e2e
+          fetch-depth: 1
+
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
 
       - name: Install e2e dependencies
         working-directory: e2e
-        run: |
-          npm ci --ignore-scripts
-          npx playwright install --with-deps chromium
+        run: npm ci --ignore-scripts
+
+      - name: Resolve Playwright version
+        id: pw-ver
+        working-directory: e2e
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-chromium-${{ runner.os }}-${{ steps.pw-ver.outputs.version }}
+
+      - name: Install Playwright Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        working-directory: e2e
+        run: npx playwright install-deps chromium
 
       - name: Run content type E2E tests
         working-directory: e2e
         env:
           CI: "true"
-          PR_BRANCH: ${{ github.head_ref }}
-        run: npm run test:cli -- "${{ github.event.repository.name }}" --branch="$PR_BRANCH"
+          CT_BRANCH: ${{ github.head_ref || github.ref_name }}
+          E2E_SUITE: ${{ inputs.e2e-suite }}
+        run: |
+          # H5PT-227: temp PR exclude @a11y until CLI keyboard specs handle host chrome
+          if [ "$E2E_SUITE" = "full" ]; then
+            npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH"
+          else
+            npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH" -- --grep-invert "@a11y"
+          fi
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ github.event.repository.name }}
