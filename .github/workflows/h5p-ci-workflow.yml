@@ -155,7 +155,7 @@ jobs:
           if [ "$E2E_SUITE" = "full" ]; then
             npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH"
           else
-            npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH" -- --grep-invert "@a11y"
+            npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH" --grep-invert "@a11y"
           fi
 
       - name: Upload Playwright report

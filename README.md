@@ -115,7 +115,7 @@ Same command as CI, from a `h5pcom-e2e-tests` checkout:
 ```sh
 npm run test:cli -- <library> --branch=<pr-branch>
 # Match the PR gate (exclude @a11y):
-npm run test:cli -- <library> --branch=<pr-branch> -- --grep-invert "@a11y"
+npm run test:cli -- <library> --branch=<pr-branch> --grep-invert "@a11y"
 ```
 
 See that repo's README for setup, `--fresh`, and CLI-mode fixture/keyboard notes.
