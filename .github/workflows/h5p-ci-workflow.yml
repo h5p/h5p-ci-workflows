@@ -22,9 +22,14 @@ on:
         default: gate
         type: string
       h5p-cli-ref:
-        description: "Pinned commit tag of h5p/h5p-cli"
+        description: "h5p-cli ref for validate-translations only (not the e2e image)"
         required: false
         default: b33e87fd7d8a72eb641e008d8e9312042f947b02
+        type: string
+      ct-e2e-image:
+        description: "GHCR image for content-type-e2e. Bump after publishing a new image; do not use :latest"
+        required: false
+        default: ghcr.io/h5p/ct-e2e:playwright-1.56.1-cli-b33e87fd
         type: string
     secrets:
       E2E_ID:
@@ -72,27 +77,12 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ inputs.run-e2e }}
     timeout-minutes: 30
+    container:
+      image: ${{ inputs.ct-e2e-image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      # Some content type dependencies build with webpack via "npm run build" and
-      # assume it is available on PATH; provide it globally so "h5p setup" succeeds.
-      - name: Provide global build tooling
-        run: npm install -g webpack webpack-cli
-
-      - name: Checkout h5p-cli
-        uses: actions/checkout@v6
-        with:
-          repository: h5p/h5p-cli
-          ref: ${{ inputs.h5p-cli-ref }}
-          path: h5p-cli
-          fetch-depth: 1
-
-      - name: Install h5p-cli
-        run: |
-          cd h5p-cli
-          npm ci --ignore-scripts
-          cd ..
-          npm install -g ./h5p-cli --ignore-scripts
-
       - name: Token for private e2e repo
         id: e2e-token
         uses: actions/create-github-app-token@v1
@@ -111,38 +101,14 @@ jobs:
           path: e2e
           fetch-depth: 1
 
-      - name: Setup node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
-
       - name: Install e2e dependencies
         working-directory: e2e
         run: npm ci --ignore-scripts
 
-      - name: Resolve Playwright version
-        id: pw-ver
-        working-directory: e2e
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-chromium-${{ runner.os }}-${{ steps.pw-ver.outputs.version }}
-
-      - name: Install Playwright Chromium
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        working-directory: e2e
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright system deps
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        working-directory: e2e
-        run: npx playwright install-deps chromium
+      - name: Restore baked h5p core
+        run: |
+          mkdir -p e2e/.h5p-cli-runner
+          cp -a /opt/h5p-runner/. e2e/.h5p-cli-runner/
 
       - name: Run content type E2E tests
         working-directory: e2e

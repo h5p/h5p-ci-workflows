@@ -36,6 +36,10 @@ on:
 
 jobs:
   ci:
+    permissions:
+      contents: read
+      packages: read
+      actions: write
     uses: h5p/h5p-ci-workflows/.github/workflows/h5p-ci-workflow.yml@master
     with:
       run-translations: true
@@ -49,7 +53,8 @@ jobs:
 Copy these on the caller workflow, not only the `run-e2e` flag:
 
 - `concurrency` with `group: ct-e2e-${{ github.repository }}-${{ github.ref }}` and `cancel-in-progress: true` (latest push wins; other CT repos are unaffected)
-- `paths-ignore` for docs-only PRs (`**.md`, `LICENSE*`, `.gitignore`) so CSS/JS/JSON changes still run E2E
+- `paths-ignore` for docs-only changes (`**.md`, `LICENSE*`, `.gitignore`)
+- `permissions` with `packages: read` so the job can pull `ghcr.io/h5p/ct-e2e`
 - `secrets: inherit` for the GitHub App that can read `h5pcom-e2e-tests` (`E2E_ID`, `E2E_PRIVATE_KEY`)
 - Optional: `workflow_dispatch` input `e2e-suite` (`gate` | `full`) and pass it through as shown above
 
@@ -77,10 +82,24 @@ and some translation files may be corrupted (legacy) the Pull Request may still 
 For more information as to why the check failed, the user may inspect the Details of the check being run.
 
 ## content-type-e2e
-The `content-type-e2e` job (enabled with `run-e2e: true`) runs the Playwright E2E suite for a single content type against the **exact PR branch** of that content type — no deploy or test environment required. The job installs tooling and checks out `h5pcom-e2e-tests`, then runs the same entrypoint used locally: `npm run test:cli`. That script sets up the content type from the PR branch with `h5p-cli`; Playwright serves it on `http://localhost:8080` and runs the `chromium_cli` project.
+The `content-type-e2e` job (enabled with `run-e2e: true`) runs the Playwright E2E suite for a single content type against the **exact PR branch** of that content type — no deploy or test environment required. The job runs inside the shared `ghcr.io/h5p/ct-e2e` image, checks out `h5pcom-e2e-tests`, and uses the same entrypoint as local: `npm run test:cli`. That script sets up the content type from the PR branch with `h5p-cli`; Playwright serves it on `http://localhost:8080` and runs the `chromium_cli` project.
+
+### Runtime image
+Playwright, webpack, pinned `h5p-cli`, and `h5p core` live in `ghcr.io/h5p/ct-e2e` (see `docker/ct-e2e/Dockerfile`). The Dockerfile is the build source: publish reads the Playwright version and CLI SHA from it and tags `playwright-<version>-cli-<shortsha>` plus `latest`. Rebuild weekly (Monday 04:00 UTC), on Dockerfile / publish-workflow changes, or via **Publish CT E2E image** (`workflow_dispatch`).
+
+Playwright and `h5p-cli` are pinned in the Dockerfile. `h5p core` tracks upstream (editor / php / MathDisplay) and moves when the image rebuilds. If a weekly image is bad, pin `ct-e2e-image` back to the previous tag (or re-run Publish) — do not debug core inside a content-type PR.
+
+The CT job pulls with the **caller** repo’s `GITHUB_TOKEN`. Keep the GHCR package **internal to the `h5p` org** and allow Actions to pull it. A 403 on first pull is package settings, not missing YAML.
+
+`validate-translations` stays on `ubuntu-latest` with its own small `h5p-cli` install (no Playwright / core).
 
 ### When it runs
-Like `validate-translations`, it is triggered by the caller on `pull_request` to `master` with `types: [opened, synchronize]`, i.e. on PR open and on every new commit pushed to an open PR. This is the earliest possible point — regressions are caught before anything is merged or deployed. Docs-only PRs should be skipped via caller `paths-ignore`.
+Triggered by the caller on:
+
+- `pull_request` to `master` (`opened` / `synchronize`) — PR gate
+- `workflow_dispatch` — manual run (Actions → Run workflow)
+
+Docs-only changes should be skipped via caller `paths-ignore`.
 
 ### Enabling it
 There is nothing to configure per content type beyond the flag and the [caller adoption checklist](#caller-adoption-checklist-run-e2e-true) — the job derives everything it needs from the PR context:
@@ -92,19 +111,17 @@ Optional inputs:
 
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
 - `e2e-suite` (default `gate`) — `gate` excludes `@a11y` on the PR gate; `full` includes them (use from manual dispatch)
-- `h5p-cli-ref` — pinned commit SHA or tag of `h5p/h5p-cli` (default is a fixed SHA; bump deliberately when you need a newer CLI)
+- `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (default matches the image CLI SHA by convention; bump independently if needed). Does not change e2e.
+- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.56.1-cli-b33e87fd`). After publishing a new image, bump this default. Do not use `:latest` on callers.
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
 ### How it works
-1. Installs pinned `h5p-cli` (shallow checkout) and global build tooling (`webpack`/`webpack-cli`).
-2. Uses the GitHub App (`E2E_ID` / `E2E_PRIVATE_KEY`) to check out private `h5pcom-e2e-tests`, then `npm ci` (npm cache) and Chromium (Playwright browser cache keyed by `@playwright/test` version).
-3. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local. That sets up the content type at the PR branch, starts the CLI server via Playwright `webServer`, and runs `chromium_cli`.
-4. On **failure only**, uploads the Playwright HTML report as an artifact (`playwright-report-<repo-name>`, retained 7 days).
-
-The content type and its H5P dependencies are always set up fresh via `h5p setup` (not restored from cache).
-
-The `chromium_cli` Playwright project sets the `isCLI` option, which the suite's centralized `resolveHelper` fixture uses to upload the local `.h5p` fixture into the running CLI server (instead of targeting a hosted staging URL).
+1. Runs the job in `ghcr.io/h5p/ct-e2e` (Playwright Chromium, webpack, pinned `h5p-cli`, baked `h5p core`).
+2. Checks out private `h5pcom-e2e-tests` via GitHub App, then `npm ci --ignore-scripts`.
+3. Copies `/opt/h5p-runner` → `e2e/.h5p-cli-runner` (core already present, so `h5p core` is skipped).
+4. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local — which still runs `h5p setup` for the PR branch of that content type, then Playwright `chromium_cli`.
+5. On **failure only**, uploads the Playwright HTML report (`playwright-report-<repo-name>`, 7 days).
 
 ### H5PT-227: temporary `@a11y` exclusion on the PR gate
 `e2e-suite: gate` (normal PRs) passes `--grep-invert "@a11y"` because keyboard a11y specs still assume staging’s tab order and fail under `h5p-cli` host chrome. This is temporary, not a statement that a11y is optional. Run `workflow_dispatch` with `e2e-suite: full` to include `@a11y` until those specs are host-agnostic.
