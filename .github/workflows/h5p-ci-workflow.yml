@@ -29,7 +29,7 @@ on:
       ct-e2e-image:
         description: "GHCR image for content-type-e2e. Bump after publishing a new image; do not use :latest"
         required: false
-        default: ghcr.io/h5p/ct-e2e:playwright-1.56.1-cli-b33e87fd
+        default: ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd
         type: string
     secrets:
       E2E_ID:

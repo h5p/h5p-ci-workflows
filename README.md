@@ -112,7 +112,7 @@ Optional inputs:
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
 - `e2e-suite` (default `gate`) — `gate` excludes `@a11y` on the PR gate; `full` includes them (use from manual dispatch)
 - `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (default matches the image CLI SHA by convention; bump independently if needed). Does not change e2e.
-- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.56.1-cli-b33e87fd`). After publishing a new image, bump this default. Do not use `:latest` on callers.
+- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd`). After publishing a new image, bump this default. Do not use `:latest` on callers.
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
