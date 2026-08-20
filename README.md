@@ -17,14 +17,6 @@ concurrency:
 
 on:
   workflow_dispatch:
-    inputs:
-      e2e-suite:
-        description: gate = PR gate (excludes @a11y); full = include @a11y
-        type: choice
-        options:
-          - gate
-          - full
-        default: full
   pull_request:
     branches:
       - master
@@ -44,7 +36,6 @@ jobs:
     with:
       run-translations: true
       run-e2e: true
-      e2e-suite: ${{ github.event_name == 'workflow_dispatch' && inputs.e2e-suite || 'gate' }}
     secrets: inherit
 ```
 
@@ -56,7 +47,7 @@ Copy these on the caller workflow, not only the `run-e2e` flag:
 - `paths-ignore` for docs-only changes (`**.md`, `LICENSE*`, `.gitignore`)
 - `permissions` with `packages: read` so the job can pull `ghcr.io/h5p/ct-e2e`
 - `secrets: inherit` for the GitHub App that can read `h5pcom-e2e-tests` (`E2E_ID`, `E2E_PRIVATE_KEY`)
-- Optional: `workflow_dispatch` input `e2e-suite` (`gate` | `full`) and pass it through as shown above
+- Optional: `workflow_dispatch` so the suite can be re-run from Actions without a new commit
 
 - The `types: [opened, synchronize]` specify that the reusable workflow should be triggered on Pull Requests to master and updates open Pull Request to master.
 - The `uses` field of the `ci` job targets the reusable workflow master branch.
@@ -110,7 +101,6 @@ There is nothing to configure per content type beyond the flag and the [caller a
 Optional inputs:
 
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
-- `e2e-suite` (default `gate`) — `gate` excludes `@a11y` on the PR gate; `full` includes them (use from manual dispatch)
 - `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (default matches the image CLI SHA by convention; bump independently if needed). Does not change e2e.
 - `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd`). After publishing a new image, bump this default. Do not use `:latest` on callers.
 
@@ -123,16 +113,11 @@ Optional inputs:
 4. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local — which still runs `h5p setup` for the PR branch of that content type, then Playwright `chromium_cli`.
 5. On **failure only**, uploads the Playwright HTML report (`playwright-report-<repo-name>`, 7 days).
 
-### H5PT-227: temporary `@a11y` exclusion on the PR gate
-`e2e-suite: gate` (normal PRs) passes `--grep-invert "@a11y"` because keyboard a11y specs still assume staging’s tab order and fail under `h5p-cli` host chrome. This is temporary, not a statement that a11y is optional. Run `workflow_dispatch` with `e2e-suite: full` to include `@a11y` until those specs are host-agnostic.
-
 ### Reproducing locally
 Same command as CI, from a `h5pcom-e2e-tests` checkout:
 
 ```sh
 npm run test:cli -- <library> --branch=<pr-branch>
-# Match the PR gate (exclude @a11y):
-npm run test:cli -- <library> --branch=<pr-branch> --grep-invert "@a11y"
 ```
 
 See that repo's README for setup, `--fresh`, and CLI-mode fixture/keyboard notes.
@@ -145,4 +130,4 @@ When a content type is served by `h5p-cli`, the view page wraps the content ifra
 
 This means **keyboard-driven a11y specs that rely on the page's global tab order can fail under `chromium_cli`** even though the content type is fine — the initial `Tab` lands on the CLI's chrome, not the content. Symptoms are `toBeFocused()` reporting `inactive` and `aria-checked` staying `false` after a keypress. Mouse/`.click()`-based specs are unaffected because they target elements directly.
 
-This is deterministic (not flaky) and host-dependent, so it reproduces identically in CI. To make a keyboard spec host-agnostic, **establish focus inside the iframe before driving the keyboard** (e.g. focus the first content control: `await pom.trueButton.focus()`), rather than assuming `Tab` from the page enters the content. Page-level "tab order" assertions that test the host's traversal are not a pure property of the content type and may be scoped out of `chromium_cli`. Hardening these specs is a separate test-authoring task and is not required for the pipeline itself.
+This is deterministic (not flaky) and host-dependent. Keyboard specs must **establish focus inside the iframe before driving the keyboard** (e.g. `await pom.trueButton.focus()`), rather than assuming `Tab` from the page enters the content. True/False already does this; other content types should copy that pattern before enabling `run-e2e`. Page-level "tab order" assertions that test the host's traversal are not a property of the content type.

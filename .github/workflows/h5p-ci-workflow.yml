@@ -16,11 +16,6 @@ on:
         required: false
         default: main
         type: string
-      e2e-suite:
-        description: "gate = PR gate (excludes @a11y); full = include @a11y"
-        required: false
-        default: gate
-        type: string
       h5p-cli-ref:
         description: "h5p-cli ref for validate-translations only (not the e2e image)"
         required: false
@@ -115,14 +110,7 @@ jobs:
         env:
           CI: "true"
           CT_BRANCH: ${{ github.head_ref || github.ref_name }}
-          E2E_SUITE: ${{ inputs.e2e-suite }}
-        run: |
-          # H5PT-227: temp PR exclude @a11y until CLI keyboard specs handle host chrome
-          if [ "$E2E_SUITE" = "full" ]; then
-            npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH"
-          else
-            npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH" --grep-invert "@a11y"
-          fi
+        run: npm run test:cli -- "${{ github.event.repository.name }}" --branch="$CT_BRANCH"
 
       - name: Upload Playwright report
         if: failure()
