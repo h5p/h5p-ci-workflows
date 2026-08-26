@@ -1,0 +1,105 @@
+name: PR policy
+
+on:
+  workflow_call:
+    inputs:
+      policy-ref:
+        description: "Full commit SHA for the shared policy repository"
+        required: true
+        type: string
+      policy-repository:
+        description: "Repository that contains the shared policy code"
+        required: false
+        default: maris-test/reusable-workflows
+        type: string
+      required-checks:
+        description: "JSON array of required check names"
+        required: true
+        type: string
+      translation-paths:
+        description: "JSON array of translation path patterns"
+        required: false
+        default: '["language/*.json"]'
+        type: string
+      fallback-owner:
+        description: "Owner for paths without a CODEOWNERS match"
+        required: false
+        default: makmentins
+        type: string
+      merge-method:
+        description: "Platform auto-merge method"
+        required: false
+        default: merge
+        type: string
+      policy-check-name:
+        description: "Required check name for conditional approval"
+        required: false
+        default: H5P policy approval
+        type: string
+
+permissions:
+  contents: write
+  checks: write
+  pull-requests: write
+
+jobs:
+  enforce:
+    name: policy-enforcement
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the immutable policy reference
+        shell: bash
+        env:
+          POLICY_REF: ${{ inputs.policy-ref }}
+        run: |
+          if [[ ! "$POLICY_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "policy-ref must be a full commit SHA."
+            exit 1
+          fi
+
+      - name: Check out trusted policy code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.policy-repository }}
+          ref: ${{ inputs.policy-ref }}
+          path: .h5p-policy
+          persist-credentials: false
+
+      - name: Read Dependabot metadata
+        id: dependabot
+        if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+        continue-on-error: true
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Enforce the policy decision
+        uses: actions/github-script@v9
+        env:
+          DEPENDABOT_DEPENDENCIES: ${{ steps.dependabot.outputs.dependency-names }}
+          DEPENDABOT_METADATA_OUTCOME: ${{ steps.dependabot.outcome }}
+          DEPENDABOT_NEW_VERSION: ${{ steps.dependabot.outputs.new-version }}
+          DEPENDABOT_PREVIOUS_VERSION: ${{ steps.dependabot.outputs.previous-version }}
+          DEPENDABOT_UPDATE_TYPE: ${{ steps.dependabot.outputs.update-type }}
+          POLICY_FALLBACK_OWNER: ${{ inputs.fallback-owner }}
+          POLICY_CHECK_NAME: ${{ inputs.policy-check-name }}
+          POLICY_MERGE_METHOD: ${{ inputs.merge-method }}
+          POLICY_REQUIRED_CHECKS: ${{ inputs.required-checks }}
+          POLICY_TRANSLATION_PATHS: ${{ inputs.translation-paths }}
+        with:
+          script: |
+            const path = require('path');
+            const policy = require(path.join(process.env.GITHUB_WORKSPACE, '.h5p-policy', 'src', 'enforce-policy.cjs'));
+            await policy.run({
+              github,
+              context,
+              core,
+              config: {
+                dependabotMetadataOutcome: process.env.DEPENDABOT_METADATA_OUTCOME,
+                fallbackOwner: process.env.POLICY_FALLBACK_OWNER,
+                mergeMethod: process.env.POLICY_MERGE_METHOD,
+                policyCheckName: process.env.POLICY_CHECK_NAME,
+                requiredChecks: JSON.parse(process.env.POLICY_REQUIRED_CHECKS),
+                translationPatterns: JSON.parse(process.env.POLICY_TRANSLATION_PATHS)
+              }
+            });
