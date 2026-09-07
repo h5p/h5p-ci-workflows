@@ -10,7 +10,7 @@ on:
       policy-repository:
         description: "Repository that contains the shared policy code"
         required: false
-        default: maris-test/reusable-workflows
+        default: h5p/h5p-ci-workflows
         type: string
       required-checks:
         description: "JSON array of required check names"
@@ -45,6 +45,7 @@ permissions:
 jobs:
   enforce:
     name: policy-enforcement
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Verify the immutable policy reference
@@ -89,7 +90,7 @@ jobs:
         with:
           script: |
             const path = require('path');
-            const policy = require(path.join(process.env.GITHUB_WORKSPACE, '.h5p-policy', 'src', 'enforce-policy.cjs'));
+            const policy = await import(`${process.env.GITHUB_WORKSPACE}/.h5p-policy/src/enforce-policy.mjs`);
             await policy.run({
               github,
               context,
