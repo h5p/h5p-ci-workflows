@@ -89,7 +89,6 @@ jobs:
           POLICY_TRANSLATION_PATHS: ${{ inputs.translation-paths }}
         with:
           script: |
-            const path = require('path');
             const policy = await import(`${process.env.GITHUB_WORKSPACE}/.h5p-policy/src/enforce-policy.mjs`);
             await policy.run({
               github,
