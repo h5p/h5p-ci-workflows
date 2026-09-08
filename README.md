@@ -1,8 +1,67 @@
 # h5p-ci-workflows
-Reusable workflow shared among H5P Libraries. Intented used as part of a CI pipeline covering e.g. validation, packing, bumping, linting, etc. 
-The reusable workflow currently supports two checks, each toggled by a `with` flag from the caller:
+Reusable workflow shared among H5P Libraries. Used as part of a CI pipeline running validation and enforcing PR approval and auto-merge policy. 
+The reusable workflow currently supports four checks, each toggled by a `with` flag from the caller:
 - `run-translations` — validation of translation files for H5P Libraries.
+- `run-build` — running the caller's configured npm build command.
+- `run-tests` — running the caller's configured npm test command.
 - `run-e2e` — running the content type's Playwright E2E suite against the PR branch (see [content-type-e2e](#content-type-e2e)).
+
+## Pull request policy
+The policy workflow classifies a pull request, resolves its maintainers, and configures GitHub auto-merge. It runs under `pull_request_target`, then reevaluates when the separate `CI` workflow completes. Validation remains in the CI workflow under `pull_request`.
+
+Caller repositories must:
+
+- Enable **Allow auto-merge** in repository settings.
+- Require the configured validation check names in the target branch ruleset.
+- Add `CODEOWNERS` at the repository root. GitHub recognizes this location natively, and the policy reads the same file from the trusted base branch.
+- Pin both `uses` and `policy-ref` to the same full commit SHA from this repository.
+
+```yaml
+name: PR policy
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    branches: [master]
+    types: [submitted, edited, dismissed]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+concurrency:
+  group: pr-policy-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  checks: write
+  pull-requests: write
+
+jobs:
+  policy:
+    if: github.event.pull_request.draft != true
+    uses: h5p/h5p-ci-workflows/.github/workflows/pull-request-policy.yml@<full-commit-sha>
+    with:
+      policy-ref: <full-commit-sha>
+      required-checks: '["ci / validate-translations", "ci / build"]'
+      translation-paths: '["language/*.json"]'
+      fallback-owner: h5p/core
+      merge-method: merge
+      policy-check-name: H5P policy approval
+```
+
+`required-checks` values must exactly match GitHub check-run names. The initial policy run leaves its required policy check pending while validation runs. When the `CI` workflow completes, `workflow_run` starts a fresh policy evaluation, enables GitHub auto-merge while the policy check is still pending, and then completes the policy check. Branch protection remains the final merge gate. Failed checks keep the pull request open.
+
+The caller policy workflow, including the `workflow_run` trigger, must exist on the caller repository's default branch. The value in `workflows: [CI]` must match the CI workflow's top-level `name`. GitHub does not replay completion events from before the trigger was added; rerun the completed CI workflow or the PR policy workflow once for an already-pending pull request. 
+The policy job is skipped for draft pull requests and runs when the PR is marked ready for review.
+
+GitHub natively requests reviewers from the root `CODEOWNERS` file. The policy backfills missing **user** CODEOWNERS only, as `GITHUB_TOKEN` cannot assign org teams. A GitHub App with organization members read is required if the workflow itself should request `@org/team` reviewers. For categories that do not require approval, such as translation-only and eligible dependency patch pull requests, the policy removes matching owner requests (users and teams already on the PR) before enabling auto-merge. For all other categories, the CODEOWNER request remains until an applicable owner approves the current head.
+
+Dependabot auto-merge is limited to verified PRs where every commit belongs to `dependabot[bot]` and every updated dependency is a stable semantic-version patch. Grouped updates use Dependabot's highest `update-type`, so a group is eligible only when that value is `semver-patch` and the reported versions are stable and at least `1.0.0`. Missing or malformed metadata, pre-1.0 updates, prereleases, mixed update levels, and maintainer commits require manual review.
+
+File deletions never auto-merge, but the policy check still succeeds so a maintainer can merge. Renames are classified from both the old and new path.
 
 ## Workflow Caller
 The `h5p-ci-workflow` is triggered on a `workflow_call` by the respective libraries (callers) on new pull requests to a specified branch in the caller or new commits to an existing pull request of the same branch. 
