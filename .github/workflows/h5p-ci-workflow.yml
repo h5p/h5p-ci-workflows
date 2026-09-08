@@ -11,13 +11,33 @@ on:
         required: false
         default: false
         type: boolean
+      run-build:
+        description: "Run the npm build command"
+        required: false
+        default: false
+        type: boolean
+      build-command:
+        description: "Build command for the caller repository"
+        required: false
+        default: npm run build
+        type: string
+      run-tests:
+        description: "Run the npm test command"
+        required: false
+        default: false
+        type: boolean
+      test-command:
+        description: "Test command for the caller repository"
+        required: false
+        default: npm test
+        type: string
       e2e-ref:
         description: "Ref of h5pcom-e2e-tests to run the suite from"
         required: false
         default: main
         type: string
       h5p-cli-ref:
-        description: "h5p-cli ref for validate-translations only (not the e2e image)"
+        description: "h5p-cli ref for h5p utils use"
         required: false
         default: b33e87fd7d8a72eb641e008d8e9312042f947b02
         type: string
@@ -45,6 +65,46 @@ on:
         required: false
 
 jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build }}
+    steps:
+      - name: Check out pull request code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run build
+        run: ${{ inputs.build-command }}
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-tests }}
+    steps:
+      - name: Check out pull request code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: ${{ inputs.test-command }}
+
   validate-translations:
     runs-on: ubuntu-latest
     if: ${{ inputs.run-translations }}
