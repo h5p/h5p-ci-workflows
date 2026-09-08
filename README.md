@@ -49,10 +49,17 @@ Copy these on the caller workflow, not only the `run-e2e` flag:
 - `secrets: inherit` for the GitHub App that can read `h5pcom-e2e-tests` (`E2E_ID`, `E2E_PRIVATE_KEY`)
 - Optional: `workflow_dispatch` so the suite can be re-run from Actions without a new commit
 
+`E2E_ID` and `E2E_PRIVATE_KEY` must exist in **both** org secret stores, with this repo in the access list:
+
+- **Actions** — human PRs and `workflow_dispatch`
+- **Dependabot** — PRs from `dependabot[bot]` (Actions secrets are not visible to those runs)
+
+Same GitHub App, same values. Do not use `pull_request_target` to work around missing Dependabot secrets.
+
 - The `types: [opened, synchronize]` specify that the reusable workflow should be triggered on Pull Requests to master and updates open Pull Request to master.
 - The `uses` field of the `ci` job targets the reusable workflow master branch.
 - The `with` field toggles which checks run: `run-translations` and/or `run-e2e`. Each maps to a job in the reusable workflow that only runs when its flag is true, so a single caller job drives both checks.
-- `secrets: inherit` forwards the org secrets used for E2E (`E2E_ID` and `E2E_PRIVATE_KEY` — a GitHub App with read access to `h5pcom-e2e-tests`). Only needed when `run-e2e: true`.
+- `secrets: inherit` forwards `E2E_ID` and `E2E_PRIVATE_KEY` (GitHub App with read access to `h5pcom-e2e-tests`). Only needed when `run-e2e: true`. Dependabot PRs need those names in the **Dependabot** secret store as well as Actions.
 
 ## validate-translations
 The `validate-translations` job is run depending on the input from the caller. If set to true, the job installs a **pinned** `h5p-cli` ref (`h5p-cli-ref` input) and runs `h5p utils validate` on the caller repo from the root level.
@@ -87,7 +94,7 @@ The CT job pulls with the **caller** repo’s `GITHUB_TOKEN`. Keep the GHCR pack
 ### When it runs
 Triggered by the caller on:
 
-- `pull_request` to `master` (`opened` / `synchronize`) — PR gate
+- `pull_request` to `master` (`opened` / `synchronize`) — PR gate, including Dependabot
 - `workflow_dispatch` — manual run (Actions → Run workflow)
 
 Docs-only changes should be skipped via caller `paths-ignore`.
@@ -103,6 +110,15 @@ Optional inputs:
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
 - `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (default matches the image CLI SHA by convention; bump independently if needed). Does not change e2e.
 - `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd`). After publishing a new image, bump this default. Do not use `:latest` on callers.
+- `e2e-cli-repository` + `e2e-cli-ref` — overlay a different `h5p-cli` (fork/branch/SHA) for **this E2E job only**. Empty (default) keeps the image CLI. Always pass both. Use a SHA that supports `h5p setup <library> [ref]`; vanilla `improve-performance` does not. Revert by removing the two inputs. Example:
+
+```
+with:
+  run-translations: true
+  run-e2e: true
+  e2e-cli-repository: wwalmnes/h5p-cli
+  e2e-cli-ref: change-version-option-to-ref
+```
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
@@ -110,8 +126,9 @@ Optional inputs:
 1. Runs the job in `ghcr.io/h5p/ct-e2e` (Playwright Chromium, webpack, pinned `h5p-cli`, baked `h5p core`).
 2. Checks out private `h5pcom-e2e-tests` via GitHub App, then `npm ci --ignore-scripts`.
 3. Copies `/opt/h5p-runner` → `e2e/.h5p-cli-runner` (core already present, so `h5p core` is skipped).
-4. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local — which still runs `h5p setup` for the PR branch of that content type, then Playwright `chromium_cli`.
-5. On **failure only**, uploads the Playwright HTML report (`playwright-report-<repo-name>`, 7 days).
+4. Optionally overlays another `h5p-cli` (`e2e-cli-repository` / `e2e-cli-ref`) on Node 24; otherwise PATH keeps the image CLI.
+5. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local — which still runs `h5p setup` for the PR branch of that content type, then Playwright `chromium_cli`.
+6. On **failure only**, uploads the Playwright HTML report (`playwright-report-<repo-name>`, 7 days).
 
 ### Reproducing locally
 Same command as CI, from a `h5pcom-e2e-tests` checkout:

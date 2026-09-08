@@ -26,6 +26,16 @@ on:
         required: false
         default: ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd
         type: string
+      e2e-cli-repository:
+        description: "GitHub owner/name to overlay as h5p-cli in content-type-e2e. Empty keeps the image CLI."
+        required: false
+        default: ""
+        type: string
+      e2e-cli-ref:
+        description: "Branch, tag, or SHA of e2e-cli-repository. Required when e2e-cli-repository is set."
+        required: false
+        default: ""
+        type: string
     secrets:
       E2E_ID:
         description: "GitHub App ID used to check out private h5pcom-e2e-tests (only when run-e2e is true)"
@@ -104,6 +114,33 @@ jobs:
         run: |
           mkdir -p e2e/.h5p-cli-runner
           cp -a /opt/h5p-runner/. e2e/.h5p-cli-runner/
+
+      # Optional trial of a fork/SHA (William's rewrite). Default image CLI stays
+      # on PATH unless both inputs are set. Node 24 is required for that CLI.
+      - name: Overlay h5p-cli
+        if: ${{ inputs.e2e-cli-repository != '' || inputs.e2e-cli-ref != '' }}
+        env:
+          CLI_REPO: ${{ inputs.e2e-cli-repository }}
+          CLI_REF: ${{ inputs.e2e-cli-ref }}
+        run: |
+          if [ -z "$CLI_REPO" ] || [ -z "$CLI_REF" ]; then
+            echo "::error::Set both e2e-cli-repository and e2e-cli-ref, or neither."
+            exit 1
+          fi
+          curl -fsSL https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz \
+            | tar -xJ -C /usr/local --strip-components=1
+          node -v
+          mkdir -p /opt/h5p-cli-overlay
+          git -C /opt/h5p-cli-overlay init
+          git -C /opt/h5p-cli-overlay remote add origin "https://github.com/${CLI_REPO}.git"
+          git -C /opt/h5p-cli-overlay fetch --depth 1 origin "$CLI_REF"
+          git -C /opt/h5p-cli-overlay checkout FETCH_HEAD
+          git -C /opt/h5p-cli-overlay rev-parse --short HEAD
+          cd /opt/h5p-cli-overlay
+          npm ci --ignore-scripts
+          npm install -g . --ignore-scripts
+          command -v h5p
+          h5p --help >/dev/null
 
       - name: Run content type E2E tests
         working-directory: e2e
