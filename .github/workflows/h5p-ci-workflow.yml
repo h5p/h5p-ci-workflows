@@ -197,7 +197,7 @@ jobs:
           git -C /opt/h5p-cli-overlay checkout FETCH_HEAD
           git -C /opt/h5p-cli-overlay rev-parse --short HEAD
           cd /opt/h5p-cli-overlay
-          npm ci --ignore-scripts
+          npm install --ignore-scripts
           npm install -g . --ignore-scripts
           command -v h5p
           h5p --help >/dev/null
