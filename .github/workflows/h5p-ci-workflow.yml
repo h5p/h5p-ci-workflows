@@ -187,8 +187,8 @@ jobs:
             echo "::error::Set both e2e-cli-repository and e2e-cli-ref, or neither."
             exit 1
           fi
-          curl -fsSL https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.xz \
-            | tar -xJ -C /usr/local --strip-components=1
+          curl -fsSL https://nodejs.org/dist/v24.19.0/node-v24.19.0-linux-x64.tar.gz \
+            | tar -xz -C /usr/local --strip-components=1
           node -v
           mkdir -p /opt/h5p-cli-overlay
           git -C /opt/h5p-cli-overlay init
