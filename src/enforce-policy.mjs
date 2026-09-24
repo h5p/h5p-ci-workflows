@@ -449,7 +449,6 @@ async function enableAutoMerge(github, pullRequestId, method) {
     }
   `, { pullRequestId, mergeMethod: mergeMethod(method) });
 }
-
 async function eventPullRequest(github, context) {
   if (context.payload.pull_request) {
     return context.payload.pull_request;
@@ -469,7 +468,28 @@ async function eventPullRequest(github, context) {
     commit_sha: workflowRun.head_sha,
     per_page: 100
   });
-  return pulls.find((pull) => pull.state === 'open' && pull.head.sha === workflowRun.head_sha) || null;
+
+  const associatedPull = pulls.find((pull) => (
+    pull.state === 'open' && pull.head.sha === workflowRun.head_sha
+  ));
+  if (associatedPull) {
+    return associatedPull;
+  }
+
+  // GitHub may omit PR associations for workflow runs whose head is in a fork.
+  const headOwner = workflowRun.head_repository?.owner?.login;
+  if (!headOwner || !workflowRun.head_branch) {
+    return null;
+  }
+
+  const branchPulls = await github.paginate(github.rest.pulls.list, {
+    ...context.repo,
+    state: 'open',
+    head: `${headOwner}:${workflowRun.head_branch}`,
+    per_page: 100
+  });
+
+  return branchPulls.find((pull) => pull.head.sha === workflowRun.head_sha) || null;
 }
 
 async function disableAutoMerge(github, pullRequestId) {
