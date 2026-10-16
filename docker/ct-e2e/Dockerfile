@@ -4,7 +4,7 @@ FROM mcr.microsoft.com/playwright:v1.57.0-noble
 
 USER root
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends git ca-certificates patch \
+	&& apt-get install -y --no-install-recommends git git-lfs ca-certificates patch \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Some content type dependencies build with webpack via "npm run build" and
