@@ -11,7 +11,7 @@ RUN apt-get update \
 # assume it is available on PATH; provide it globally so h5p setup succeeds.
 RUN npm install -g webpack webpack-cli
 
-ARG H5P_CLI_REF=b33e87fd7d8a72eb641e008d8e9312042f947b02
+ARG H5P_CLI_REF=d494538cc3335c9d5c3f85d2fe6def12df04ffa4
 WORKDIR /opt/h5p-cli
 RUN git init \
 	&& git remote add origin https://github.com/h5p/h5p-cli.git \

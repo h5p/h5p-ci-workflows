@@ -39,12 +39,12 @@ on:
       h5p-cli-ref:
         description: "h5p-cli ref for h5p utils use"
         required: false
-        default: b33e87fd7d8a72eb641e008d8e9312042f947b02
+        default: d494538cc3335c9d5c3f85d2fe6def12df04ffa4
         type: string
       ct-e2e-image:
         description: "GHCR image for content-type-e2e. Bump after publishing a new image; do not use :latest"
         required: false
-        default: ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd
+        default: ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-d494538c
         type: string
       e2e-cli-repository:
         description: "GitHub owner/name to overlay as h5p-cli in content-type-e2e. Empty keeps the image CLI."

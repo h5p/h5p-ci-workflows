@@ -168,7 +168,7 @@ Optional inputs:
 
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
 - `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (default matches the image CLI SHA by convention; bump independently if needed). Does not change e2e.
-- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-b33e87fd`). After publishing a new image, bump this default. Do not use `:latest` on callers.
+- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-d494538c`). After publishing a new image, bump this default. Do not use `:latest` on callers.
 - `e2e-cli-repository` + `e2e-cli-ref` — overlay a different `h5p-cli` (fork/branch/SHA) for **this E2E job only**. Empty (default) keeps the image CLI. Always pass both. Use a SHA that supports `h5p setup <library> [ref]`; vanilla `improve-performance` does not. Revert by removing the two inputs. Example:
 
 ```
