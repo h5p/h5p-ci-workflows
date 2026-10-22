@@ -168,7 +168,7 @@ jobs:
 
       - name: Install e2e dependencies
         working-directory: e2e
-        run:  --omit=dev --ignore-scripts
+        run: npm ci --omit=dev --ignore-scripts
 
       - name: Restore baked h5p core
         run: |
