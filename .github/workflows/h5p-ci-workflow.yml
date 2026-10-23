@@ -165,6 +165,7 @@ jobs:
           token: ${{ steps.e2e-token.outputs.token }}
           path: e2e
           fetch-depth: 1
+          lfs: true
 
       - name: Install e2e dependencies
         working-directory: e2e
