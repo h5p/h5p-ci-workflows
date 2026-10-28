@@ -165,11 +165,12 @@ jobs:
           token: ${{ steps.e2e-token.outputs.token }}
           path: e2e
           fetch-depth: 1
-          lfs: true
 
       - name: Install e2e dependencies
         working-directory: e2e
-        run: npm ci --omit=dev --ignore-scripts
+        run: |
+          git lfs pull
+          npm ci --omit=dev --ignore-scripts
 
       - name: Restore baked h5p core
         run: |
