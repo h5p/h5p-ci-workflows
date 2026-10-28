@@ -168,7 +168,7 @@ Optional inputs:
 
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
 - `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (official `h5p/h5p-cli`). Does not change e2e.
-- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-bff73d9`). The image's `h5p` command is William's fork at `bff73d9`. After publishing a new image, bump this default. Do not use `:latest` on callers.
+- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-bff73d9d`). The image's `h5p` command is William's fork at `bff73d9`. After publishing a new image, bump this default. Do not use `:latest` on callers.
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
