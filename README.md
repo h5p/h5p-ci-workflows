@@ -167,17 +167,8 @@ There is nothing to configure per content type beyond the flag and the [caller a
 Optional inputs:
 
 - `e2e-ref` (default `main`) — which ref of `h5pcom-e2e-tests` to run from
-- `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (default matches the image CLI SHA by convention; bump independently if needed). Does not change e2e.
-- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-d494538c`). After publishing a new image, bump this default. Do not use `:latest` on callers.
-- `e2e-cli-repository` + `e2e-cli-ref` — overlay a different `h5p-cli` (fork/branch/SHA) for **this E2E job only**. Empty (default) keeps the image CLI. Always pass both. Use a SHA that supports `h5p setup <library> [ref]`; vanilla `improve-performance` does not. Revert by removing the two inputs. Example:
-
-```
-with:
-  run-translations: true
-  run-e2e: true
-  e2e-cli-repository: wwalmnes/h5p-cli
-  e2e-cli-ref: change-version-option-to-ref
-```
+- `h5p-cli-ref` — `h5p-cli` ref for **validate-translations only** (official `h5p/h5p-cli`). Does not change e2e.
+- `ct-e2e-image` — tagged GHCR image for the E2E job (default `ghcr.io/h5p/ct-e2e:playwright-1.57.0-cli-bff73d9`). The image's `h5p` command is William's fork at `bff73d9`. After publishing a new image, bump this default. Do not use `:latest` on callers.
 
 > Requires `h5p setup <library> [ref] [download]` in `h5p-cli`, where `[ref]` is the PR branch (or a tag). Without it the CLI sets up `master` of the content type, so the suite would silently test the wrong code rather than the PR.
 
@@ -185,9 +176,8 @@ with:
 1. Runs the job in `ghcr.io/h5p/ct-e2e` (Playwright Chromium, webpack, pinned `h5p-cli`, baked `h5p core`).
 2. Checks out private `h5pcom-e2e-tests` via GitHub App, then `npm ci --ignore-scripts`.
 3. Copies `/opt/h5p-runner` → `e2e/.h5p-cli-runner` (core already present, so `h5p core` is skipped).
-4. Optionally overlays another `h5p-cli` (`e2e-cli-repository` / `e2e-cli-ref`) on Node 24; otherwise PATH keeps the image CLI.
-5. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local — which still runs `h5p setup` for the PR branch of that content type, then Playwright `chromium_cli`.
-6. On **failure only**, uploads the Playwright HTML report (`playwright-report-<repo-name>`, 7 days).
+4. Runs `npm run test:cli -- <repo-name> --branch=<branch>` — same command as local — which still runs `h5p setup` for the PR branch of that content type, then Playwright `chromium_cli`. The `h5p` on PATH is the one baked into the image.
+5. On **failure only**, uploads the Playwright HTML report (`playwright-report-<repo-name>`, 7 days).
 
 ### Reproducing locally
 Same command as CI, from a `h5pcom-e2e-tests` checkout:
